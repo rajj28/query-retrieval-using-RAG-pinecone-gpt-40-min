@@ -1,0 +1,71 @@
+{
+  "test_timestamp": "20250806_023547",
+  "summary": {
+    "total_domains": 6,
+    "successful_domains": 6,
+    "failed_domains": 0,
+    "success_rate": 100.0
+  },
+  "detailed_results": {
+    "insurance": {
+      "domain_type": "insurance",
+      "domain_name": "Insurance",
+      "domain_detection": true,
+      "section_patterns_count": 6,
+      "entity_patterns_count": 4,
+      "terminology_categories": 5,
+      "expansion_patterns_count": 3,
+      "sample_expansion_terms": 18
+    },
+    "legal": {
+      "domain_type": "legal",
+      "domain_name": "Legal",
+      "domain_detection": false,
+      "section_patterns_count": 8,
+      "entity_patterns_count": 4,
+      "terminology_categories": 5,
+      "expansion_patterns_count": 3,
+      "sample_expansion_terms": 14
+    },
+    "hr": {
+      "domain_type": "hr",
+      "domain_name": "HR",
+      "domain_detection": false,
+      "section_patterns_count": 8,
+      "entity_patterns_count": 4,
+      "terminology_categories": 5,
+      "expansion_patterns_count": 3,
+      "sample_expansion_terms": 14
+    },
+    "compliance": {
+      "domain_type": "compliance",
+      "domain_name": "Compliance",
+      "domain_detection": false,
+      "section_patterns_count": 8,
+      "entity_patterns_count": 4,
+      "terminology_categories": 5,
+      "expansion_patterns_count": 3,
+      "sample_expansion_terms": 13
+    },
+    "finance": {
+      "domain_type": "finance",
+      "domain_name": "Finance",
+      "domain_detection": false,
+      "section_patterns_count": 8,
+      "entity_patterns_count": 4,
+      "terminology_categories": 4,
+      "expansion_patterns_count": 2,
+      "sample_expansion_terms": 12
+    },
+    "healthcare": {
+      "domain_type": "healthcare",
+      "domain_name": "Healthcare",
+      "domain_detection": false,
+      "section_patterns_count": 8,
+      "entity_patterns_count": 4,
+      "terminology_categories": 4,
+      "expansion_patterns_count": 2,
+      "sample_expansion_terms": 8
+    }
+  }
+}
