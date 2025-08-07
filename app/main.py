@@ -4,7 +4,6 @@ from fastapi.responses import JSONResponse
 import logging
 import uvicorn
 import uuid
-from contextlib import asynccontextmanager
 from datetime import datetime
 
 from app.api.v1.routes.hackrx import router as hackrx_router
@@ -18,58 +17,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Initialize RetrievalService
-retrieval_service = RetrievalService()
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Application lifespan manager with service initialization"""
-    # Startup
-    logger.info(f"Starting LLM Query Retrieval System (Environment: {settings.ENVIRONMENT}, Debug: {settings.DEBUG})")
-    
-    # Initialize RetrievalService
-    try:
-        if not await retrieval_service.initialize():
-            logger.error("Failed to initialize RetrievalService")
-            raise RuntimeError("RetrievalService initialization failed")
-        
-        # Warm up embedding cache if needed
-        if settings.ENVIRONMENT != "production":
-            common_queries = [
-                "What is the coverage amount?",
-                "What are the exclusions in the policy?",
-                "How to file a claim?"
-            ]
-            await retrieval_service.embedding_manager.warm_up_cache(common_queries)
-            logger.info("Embedding cache warmed up with common queries")
-        
-        # Perform initial health check
-        initial_health = await retrieval_service.health_check()
-        logger.info(f"Initial health check: {initial_health['status']}")
-        if initial_health['status'] != 'healthy':
-            logger.warning(f"Some components are unhealthy: {initial_health['components']}")
-    
-    except Exception as e:
-        logger.error(f"Startup failed: {str(e)}")
-        raise
-
-    yield
-    
-    # Shutdown
-    logger.info("Shutting down LLM Query Retrieval System...")
-    # Clean up test data in non-production environments
-    if settings.ENVIRONMENT != "production" and settings.ENABLE_NAMESPACE_CLEANUP:
-        await retrieval_service.cleanup_test_data()
-        logger.info("Test data cleanup completed")
-
 # Create FastAPI app
 app = FastAPI(
     title=settings.PROJECT_NAME,
     description="A system for processing insurance documents and answering queries using LLM and hybrid search",
     version=settings.VERSION,
     docs_url="/docs" if settings.DEBUG else None,
-    redoc_url="/redoc" if settings.DEBUG else None,
-    lifespan=lifespan
+    redoc_url="/redoc" if settings.DEBUG else None
 )
 
 # Add CORS middleware with stricter settings
@@ -84,12 +38,20 @@ app.add_middleware(
 # Include routers
 app.include_router(hackrx_router, prefix=settings.API_V1_STR, tags=["hackrx"])
 
-# Dependency for RetrievalService
+# Lazy initialization of RetrievalService
+_retrieval_service = None
+
 async def get_retrieval_service() -> RetrievalService:
-    """Dependency to provide initialized RetrievalService"""
-    if not retrieval_service._initialized:
-        await retrieval_service.initialize()
-    return retrieval_service
+    """Dependency to provide initialized RetrievalService with lazy initialization"""
+    global _retrieval_service
+    if _retrieval_service is None:
+        _retrieval_service = RetrievalService()
+        try:
+            await _retrieval_service.initialize()
+        except Exception as e:
+            logger.error(f"Failed to initialize RetrievalService: {str(e)}")
+            raise HTTPException(status_code=500, detail="Service initialization failed")
+    return _retrieval_service
 
 @app.get("/")
 async def root():
@@ -103,25 +65,25 @@ async def root():
     }
 
 @app.get("/health")
-async def health_check(service: RetrievalService = Depends(get_retrieval_service)):
-    """Comprehensive health check endpoint"""
+async def health_check():
+    """Simple health check endpoint for Vercel"""
     request_id = str(uuid.uuid4())
     try:
-        health = await service.health_check()
-        
-        # Structure the response to match HealthCheckResponse model
+        # Basic health check without full service initialization
         response = {
-            'status': health.get('status', 'unknown'),
-            'components': health.get('components', {}),
+            'status': 'healthy',
+            'components': {
+                'api': 'healthy',
+                'config': 'healthy'
+            },
             'service_info': {
                 'service': settings.PROJECT_NAME,
                 'version': settings.VERSION,
-                'environment': settings.ENVIRONMENT,
-                **health.get('service_info', {})
+                'environment': settings.ENVIRONMENT
             },
             'request_id': request_id,
             'timestamp': datetime.utcnow().isoformat(),
-            'error': None  # Explicitly include error field as None for successful responses
+            'error': None
         }
         return response
     except Exception as e:

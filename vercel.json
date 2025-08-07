@@ -8,6 +8,10 @@
   ],
   "routes": [
     {
+      "src": "/health",
+      "dest": "app/main.py"
+    },
+    {
       "src": "/(.*)",
       "dest": "app/main.py"
     }
@@ -19,7 +23,7 @@
   },
   "functions": {
     "app/main.py": {
-      "maxDuration": 30
+      "maxDuration": 60
     }
   }
 }
