@@ -43,6 +43,61 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
         )
     return credentials.credentials
 
+@router.get(
+    "/health",
+    summary="Simple health check for Vercel",
+    description="Simple health check endpoint that doesn't require authentication"
+)
+async def simple_health_check():
+    """Simple health check for Vercel deployment"""
+    return {
+        "status": "healthy",
+        "service": settings.PROJECT_NAME,
+        "version": settings.VERSION,
+        "environment": settings.ENVIRONMENT,
+        "timestamp": datetime.utcnow().isoformat()
+    }
+
+@router.get(
+    "/health/detailed",
+    response_model=HealthCheckResponse,
+    summary="Detailed health check",
+    description="Check the health status of all service components (requires authentication)"
+)
+async def detailed_health_check(
+    service: RetrievalService = Depends(get_retrieval_service)
+) -> HealthCheckResponse:
+    """Comprehensive health check for all services"""
+    request_id = str(uuid.uuid4())
+    try:
+        health_result = await service.health_check()
+        logger.info(f"[{request_id}] Health check result: {health_result}")
+        
+        # Ensure all required fields are present
+        response_data = {
+            'status': health_result.get('status', 'unknown'),
+            'components': health_result.get('components', {}),
+            'service_info': health_result.get('service_info', {}),
+            'request_id': request_id,
+            'timestamp': datetime.utcnow().isoformat()
+        }
+        
+        # Add error field if present
+        if 'error' in health_result:
+            response_data['error'] = health_result['error']
+            
+        return HealthCheckResponse(**response_data)
+    except Exception as e:
+        logger.error(f"[{request_id}] Health check failed: {str(e)}", exc_info=True)
+        return HealthCheckResponse(
+            status='unhealthy',
+            components={},
+            service_info={},
+            request_id=request_id,
+            timestamp=datetime.utcnow().isoformat(),
+            error=str(e)
+        )
+
 @router.post(
     "/hackrx/run",
     response_model=HackRXResponse,
@@ -178,46 +233,6 @@ async def run_hackrx(
                 "request_id": request_id,
                 "timestamp": datetime.utcnow().isoformat()
             }
-        )
-
-@router.get(
-    "/health",
-    response_model=HealthCheckResponse,
-    summary="Health check",
-    description="Check the health status of all service components"
-)
-async def health_check(
-    service: RetrievalService = Depends(get_retrieval_service)
-) -> HealthCheckResponse:
-    """Comprehensive health check for all services"""
-    request_id = str(uuid.uuid4())
-    try:
-        health_result = await service.health_check()
-        logger.info(f"[{request_id}] Health check result: {health_result}")
-        
-        # Ensure all required fields are present
-        response_data = {
-            'status': health_result.get('status', 'unknown'),
-            'components': health_result.get('components', {}),
-            'service_info': health_result.get('service_info', {}),
-            'request_id': request_id,
-            'timestamp': datetime.utcnow().isoformat()
-        }
-        
-        # Add error field if present
-        if 'error' in health_result:
-            response_data['error'] = health_result['error']
-            
-        return HealthCheckResponse(**response_data)
-    except Exception as e:
-        logger.error(f"[{request_id}] Health check failed: {str(e)}", exc_info=True)
-        return HealthCheckResponse(
-            status='unhealthy',
-            components={},
-            service_info={},
-            request_id=request_id,
-            timestamp=datetime.utcnow().isoformat(),
-            error=str(e)
         )
 
 @router.post(
