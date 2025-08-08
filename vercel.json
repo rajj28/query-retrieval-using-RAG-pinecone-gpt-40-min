@@ -12,6 +12,10 @@
       "dest": "app/main.py"
     },
     {
+      "src": "/api/v1/hackrx/health",
+      "dest": "app/main.py"
+    },
+    {
       "src": "/(.*)",
       "dest": "app/main.py"
     }
