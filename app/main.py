@@ -36,7 +36,7 @@ app.add_middleware(
 )
 
 # Include routers
-app.include_router(hackrx_router, prefix=settings.API_V1_STR, tags=["hackrx"])
+app.include_router(hackrx_router, prefix=f"{settings.API_V1_STR}/hackrx", tags=["hackrx"])
 
 # Lazy initialization of RetrievalService
 _retrieval_service = None
@@ -100,17 +100,6 @@ async def health_check():
             'timestamp': datetime.utcnow().isoformat(),
             'error': str(e)
         }
-
-@app.get("/api/v1/hackrx/health")
-async def hackrx_health_check():
-    """Health check endpoint specifically for Vercel deployment"""
-    return {
-        "status": "healthy",
-        "service": settings.PROJECT_NAME,
-        "version": settings.VERSION,
-        "environment": settings.ENVIRONMENT,
-        "timestamp": datetime.utcnow().isoformat()
-    }
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request, exc):
