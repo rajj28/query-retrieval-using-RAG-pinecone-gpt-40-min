@@ -435,15 +435,25 @@ class RetrievalService:
 
     def _detect_domain(self, document_metadata: Dict[str, Any]) -> str:
         """Detect document domain for query enhancement"""
-        policy_type = document_metadata.get('policy_type', '').lower()
-        company_name = document_metadata.get('company_name', '').lower()
+        try:
+            policy_type = document_metadata.get('policy_type', '')
+            company_name = document_metadata.get('company_name', '')
+            
+            # Handle None values safely
+            if policy_type and isinstance(policy_type, str):
+                policy_type = policy_type.lower()
+            if company_name and isinstance(company_name, str):
+                company_name = company_name.lower()
 
-        # Insurance-specific domain detection
-        if policy_type:
-            return policy_type.lower()  # e.g., 'health insurance', 'motor insurance'
-        if 'insurance' in company_name:
-            return 'insurance'
-        return 'general'
+            # Insurance-specific domain detection
+            if policy_type:
+                return policy_type  # e.g., 'health insurance', 'motor insurance'
+            if company_name and 'insurance' in company_name:
+                return 'insurance'
+            return 'general'
+        except Exception as e:
+            logger.warning(f"Domain detection failed: {e}, using 'general'")
+            return 'general'
 
     async def _get_service_statistics(self) -> Dict[str, Any]:
         """Get comprehensive service statistics"""
