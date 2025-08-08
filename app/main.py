@@ -5,12 +5,25 @@ import logging
 import uvicorn
 import uuid
 from datetime import datetime
+import os
 
-from app.api.v1.routes.hackrx import router as hackrx_router
-from app.services.retrieval_service import RetrievalService
-from app.config.settings import settings
+# Only import settings for basic config, avoid heavy imports
+try:
+    from app.config.settings import settings
+except ImportError:
+    # Fallback settings for health check
+    class FallbackSettings:
+        PROJECT_NAME = "LLM Query Retrieval System"
+        VERSION = "1.0.0"
+        ENVIRONMENT = os.getenv("ENVIRONMENT", "production")
+        DEBUG = os.getenv("DEBUG", "false").lower() == "true"
+        LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+        API_V1_STR = "/api/v1"
+        ALLOWED_ORIGINS = ["*"]
+    
+    settings = FallbackSettings()
 
-# Configure structured logging
+# Configure basic logging
 logging.basicConfig(
     level=getattr(logging, settings.LOG_LEVEL),
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -26,32 +39,38 @@ app = FastAPI(
     redoc_url="/redoc" if settings.DEBUG else None
 )
 
-# Add CORS middleware with stricter settings
+# Add CORS middleware with basic settings
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"],  # Restrict methods
-    allow_headers=["Authorization", "Content-Type", "X-Request-ID"],  # Restrict headers
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
 )
 
-# Include routers
-app.include_router(hackrx_router, prefix=f"{settings.API_V1_STR}/hackrx", tags=["hackrx"])
-
-# Lazy initialization of RetrievalService
+# Lazy import of heavy dependencies only when needed
 _retrieval_service = None
+_hackrx_router = None
 
-async def get_retrieval_service() -> RetrievalService:
-    """Dependency to provide initialized RetrievalService with lazy initialization"""
-    global _retrieval_service
-    if _retrieval_service is None:
-        _retrieval_service = RetrievalService()
+def get_hackrx_router():
+    """Lazy import of hackrx router to avoid heavy imports during startup"""
+    global _hackrx_router
+    if _hackrx_router is None:
         try:
-            await _retrieval_service.initialize()
-        except Exception as e:
-            logger.error(f"Failed to initialize RetrievalService: {str(e)}")
-            raise HTTPException(status_code=500, detail="Service initialization failed")
-    return _retrieval_service
+            from app.api.v1.routes.hackrx import router as hackrx_router
+            _hackrx_router = hackrx_router
+        except ImportError as e:
+            logger.warning(f"Could not import hackrx router: {e}")
+            return None
+    return _hackrx_router
+
+# Include routers only if they can be imported
+try:
+    hackrx_router = get_hackrx_router()
+    if hackrx_router:
+        app.include_router(hackrx_router, prefix=f"{settings.API_V1_STR}/hackrx", tags=["hackrx"])
+except Exception as e:
+    logger.warning(f"Could not include hackrx router: {e}")
 
 @app.get("/")
 async def root():
@@ -69,7 +88,7 @@ async def health_check():
     """Simple health check endpoint for Vercel"""
     request_id = str(uuid.uuid4())
     try:
-        # Basic health check without full service initialization
+        # Basic health check without any heavy imports
         response = {
             'status': 'healthy',
             'components': {

@@ -1,0 +1,25 @@
+# Minimal requirements for Vercel deployment
+# Core FastAPI and web framework
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.5.0
+pydantic-settings==2.1.0
+
+# Basic HTTP client
+httpx==0.25.2
+
+# Environment management
+python-dotenv==1.0.0
+
+# Basic text processing
+regex==2023.10.3
+
+# Security and authentication
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+
+# Monitoring and logging
+structlog==23.2.0
+
+# Retry logic
+tenacity==8.2.3
