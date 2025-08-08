@@ -2,22 +2,22 @@
   "version": 2,
   "builds": [
     {
-      "src": "app/main.py",
+      "src": "main.py",
       "use": "@vercel/python"
     }
   ],
   "routes": [
     {
       "src": "/health",
-      "dest": "app/main.py"
+      "dest": "main.py"
     },
     {
       "src": "/api/v1/hackrx/health",
-      "dest": "app/main.py"
+      "dest": "main.py"
     },
     {
       "src": "/(.*)",
-      "dest": "app/main.py"
+      "dest": "main.py"
     }
   ],
   "env": {
@@ -26,7 +26,7 @@
     "LOG_LEVEL": "INFO"
   },
   "functions": {
-    "app/main.py": {
+    "main.py": {
       "maxDuration": 60
     }
   }
