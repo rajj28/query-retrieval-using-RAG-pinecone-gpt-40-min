@@ -7,12 +7,14 @@ import time
 import uuid
 from datetime import datetime
 
+# Import models (lightweight)
 from app.api.v1.models.request import HackRXRequest, DocumentInfoRequest
 from app.api.v1.models.response import (
     HackRXResponse, DocumentInfoResponse, ServiceStatsResponse,
     CleanupResponse, HealthCheckResponse, SimpleHackRXResponse
 )
-from app.services.retrieval_service import RetrievalService
+# Remove direct import of RetrievalService
+# from app.services.retrieval_service import RetrievalService
 from app.config.settings import settings
 
 
@@ -21,17 +23,20 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 security = HTTPBearer()
 
-async def get_retrieval_service() -> RetrievalService:
-    """Dependency to provide initialized RetrievalService"""
-    service = RetrievalService()
-    if not service._initialized:
-        success = await service.initialize()
-        if not success:
-            raise HTTPException(
-                status_code=503,
-                detail="Failed to initialize retrieval service"
-            )
-    return service
+async def get_retrieval_service():
+    """Dependency to provide initialized RetrievalService with lazy loading"""
+    try:
+        # Import RetrievalService only when needed
+        from app.services.retrieval_service import RetrievalService
+        service = RetrievalService()
+        # Don't initialize here - let it initialize when first used
+        return service
+    except Exception as e:
+        logger.error(f"Failed to create RetrievalService: {str(e)}")
+        raise HTTPException(
+            status_code=503,
+            detail="Failed to create retrieval service"
+        )
 
 def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     """Verify bearer token"""
@@ -45,11 +50,11 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
 
 @router.get(
     "/health",
-    summary="Simple health check for Vercel",
+    summary="Simple health check for Railway",
     description="Simple health check endpoint that doesn't require authentication"
 )
 async def simple_health_check():
-    """Simple health check for Vercel deployment"""
+    """Simple health check for Railway deployment"""
     return {
         "status": "healthy",
         "service": settings.PROJECT_NAME,
@@ -65,7 +70,7 @@ async def simple_health_check():
     description="Check the health status of all service components (requires authentication)"
 )
 async def detailed_health_check(
-    service: RetrievalService = Depends(get_retrieval_service)
+    service = Depends(get_retrieval_service)
 ) -> HealthCheckResponse:
     """Comprehensive health check for all services"""
     request_id = str(uuid.uuid4())

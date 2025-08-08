@@ -130,6 +130,14 @@ try:
 except Exception as e:
     logger.warning(f"Could not include hackrx router: {e}")
 
+# Force include the router for now to ensure it's available
+try:
+    from app.api.v1.routes.hackrx import router as hackrx_router
+    app.include_router(hackrx_router, prefix=f"{settings.API_V1_STR}/hackrx", tags=["hackrx"])
+    logger.info("HackRX router force-included successfully")
+except Exception as e:
+    logger.error(f"Failed to include hackrx router: {e}")
+
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request, exc):
     """Custom HTTP exception handler"""
