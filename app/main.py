@@ -6,8 +6,7 @@ import uvicorn
 import uuid
 from datetime import datetime
 
-from app.api.v1.routes.hackrx import router as hackrx_router
-from app.services.retrieval_service import RetrievalService
+# Import settings first (lightweight)
 from app.config.settings import settings
 
 # Configure structured logging
@@ -35,22 +34,20 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type", "X-Request-ID"],  # Restrict headers
 )
 
-# Include routers
-app.include_router(hackrx_router, prefix=f"{settings.API_V1_STR}/hackrx", tags=["hackrx"])
-
 # Lazy initialization of RetrievalService
 _retrieval_service = None
 
-async def get_retrieval_service() -> RetrievalService:
+async def get_retrieval_service():
     """Dependency to provide initialized RetrievalService with lazy initialization"""
     global _retrieval_service
     if _retrieval_service is None:
-        _retrieval_service = RetrievalService()
         try:
-            await _retrieval_service.initialize()
+            from app.services.retrieval_service import RetrievalService
+            _retrieval_service = RetrievalService()
+            # Don't initialize here - let it initialize when first used
         except Exception as e:
-            logger.error(f"Failed to initialize RetrievalService: {str(e)}")
-            raise HTTPException(status_code=500, detail="Service initialization failed")
+            logger.error(f"Failed to create RetrievalService: {str(e)}")
+            raise HTTPException(status_code=500, detail="Service creation failed")
     return _retrieval_service
 
 @app.get("/")
@@ -66,10 +63,10 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    """Simple health check endpoint for Vercel"""
+    """Simple health check endpoint for Railway"""
     request_id = str(uuid.uuid4())
     try:
-        # Basic health check without full service initialization
+        # Basic health check without any heavy imports
         response = {
             'status': 'healthy',
             'components': {
@@ -103,7 +100,7 @@ async def health_check():
 
 @app.get("/api/v1/hackrx/health")
 async def hackrx_health_check():
-    """Simple health check endpoint specifically for Vercel's /api/v1/hackrx/health route"""
+    """Lightweight health check endpoint specifically for Railway's /api/v1/hackrx/health route"""
     return {
         "status": "healthy",
         "service": settings.PROJECT_NAME,
@@ -111,6 +108,27 @@ async def hackrx_health_check():
         "environment": settings.ENVIRONMENT,
         "timestamp": datetime.utcnow().isoformat()
     }
+
+# Lazy load and include routers only when needed
+def get_hackrx_router():
+    """Lazy load the hackrx router"""
+    try:
+        from app.api.v1.routes.hackrx import router as hackrx_router
+        return hackrx_router
+    except ImportError as e:
+        logger.warning(f"Could not import hackrx router: {e}")
+        return None
+
+# Include routers only if they can be imported
+try:
+    hackrx_router = get_hackrx_router()
+    if hackrx_router:
+        app.include_router(hackrx_router, prefix=f"{settings.API_V1_STR}/hackrx", tags=["hackrx"])
+        logger.info("HackRX router included successfully")
+    else:
+        logger.warning("HackRX router not available - heavy dependencies not loaded")
+except Exception as e:
+    logger.warning(f"Could not include hackrx router: {e}")
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request, exc):

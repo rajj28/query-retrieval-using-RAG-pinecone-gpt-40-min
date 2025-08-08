@@ -4,70 +4,155 @@ import logging
 import time
 from datetime import datetime
 
-from app.core.intelligent_document_processor import IntelligentDocumentProcessor
-from app.core.embedding_manager import EmbeddingManager
-from app.core.vector_store import VectorStore
-from app.core.dual_index_manager import DualIndexManager, SearchFilter
-from app.core.context_aware_llm import ContextAwareLLMClient
-from app.core.advanced_cache import AdvancedCache
-from app.utils.namespace_manager import NamespaceManager, document_tracker
+# Remove heavy imports from global scope
+# from app.core.intelligent_document_processor import IntelligentDocumentProcessor
+# from app.core.embedding_manager import EmbeddingManager
+# from app.core.vector_store import VectorStore
+# from app.core.dual_index_manager import DualIndexManager, SearchFilter
+# from app.core.context_aware_llm import ContextAwareLLMClient
+# from app.core.advanced_cache import AdvancedCache
+# from app.utils.namespace_manager import NamespaceManager, document_tracker
 from app.config.settings import settings
+
+# Import SearchFilter for type hints
+from app.core.dual_index_manager import SearchFilter
 
 logger = logging.getLogger(__name__)
 
 class RetrievalService:
-    """Main orchestration service for document retrieval and query processing with hybrid search and context-aware LLM"""
+    """Main orchestration service for document retrieval and query processing with lazy loading"""
 
     def __init__(self):
-        self.document_processor = IntelligentDocumentProcessor()
-        self.embedding_manager = EmbeddingManager()
-        self.vector_store = VectorStore()
-        self.dual_index_manager = DualIndexManager()
-        self.llm_client = ContextAwareLLMClient()
-        self.namespace_manager = NamespaceManager()
-        self.advanced_cache = AdvancedCache()
+        # Initialize components as None - will be loaded lazily
+        self._document_processor = None
+        self._embedding_manager = None
+        self._vector_store = None
+        self._dual_index_manager = None
+        self._llm_client = None
+        self._namespace_manager = None
+        self._advanced_cache = None
         self._initialized = False
+        self._initialization_lock = asyncio.Lock()
+
+    async def _load_components(self):
+        """Lazy load all heavy components"""
+        if self._initialized:
+            return
+
+        async with self._initialization_lock:
+            if self._initialized:  # Double-check pattern
+                return
+
+            logger.info("Loading heavy ML components...")
+            
+            try:
+                # Import heavy dependencies only when needed
+                from app.core.intelligent_document_processor import IntelligentDocumentProcessor
+                from app.core.embedding_manager import EmbeddingManager
+                from app.core.vector_store import VectorStore
+                from app.core.dual_index_manager import DualIndexManager
+                from app.core.context_aware_llm import ContextAwareLLMClient
+                from app.core.advanced_cache import AdvancedCache
+                from app.utils.namespace_manager import NamespaceManager
+
+                # Initialize components
+                self._document_processor = IntelligentDocumentProcessor()
+                self._embedding_manager = EmbeddingManager()
+                self._vector_store = VectorStore()
+                self._dual_index_manager = DualIndexManager()
+                self._llm_client = ContextAwareLLMClient()
+                self._namespace_manager = NamespaceManager()
+                self._advanced_cache = AdvancedCache()
+
+                # Clear corrupted search cache to fix deserialization issues
+                self._advanced_cache.clear_search_cache()
+
+                # Initialize components concurrently
+                init_tasks = [
+                    self._vector_store.initialize(),
+                    self._dual_index_manager.initialize(),
+                    self._embedding_manager.health_check(),
+                    self._llm_client.health_check()
+                ]
+                results = await asyncio.gather(*init_tasks, return_exceptions=True)
+
+                # Check initialization results
+                vector_init, dual_index_init, embedding_health, llm_health = results
+
+                if isinstance(vector_init, Exception) or not vector_init:
+                    logger.error(f"Failed to initialize vector store: {vector_init}")
+                    raise Exception(f"Vector store initialization failed: {vector_init}")
+                if isinstance(dual_index_init, Exception) or not dual_index_init:
+                    logger.error(f"Failed to initialize dual index manager: {dual_index_init}")
+                    raise Exception(f"Dual index manager initialization failed: {dual_index_init}")
+                if isinstance(embedding_health, Exception) or (isinstance(embedding_health, dict) and embedding_health.get('status') != 'healthy'):
+                    logger.error(f"Embedding service unhealthy: {embedding_health}")
+                    raise Exception(f"Embedding service unhealthy: {embedding_health}")
+                if isinstance(llm_health, Exception) or (isinstance(llm_health, dict) and llm_health.get('status') != 'healthy'):
+                    logger.error(f"LLM service unhealthy: {llm_health}")
+                    raise Exception(f"LLM service unhealthy: {llm_health}")
+
+                self._initialized = True
+                logger.info("Retrieval service components loaded successfully")
+
+            except Exception as e:
+                logger.error(f"Failed to load retrieval service components: {str(e)}")
+                raise
+
+    @property
+    def document_processor(self):
+        """Lazy access to document processor"""
+        if self._document_processor is None:
+            raise RuntimeError("RetrievalService not initialized. Call _load_components() first.")
+        return self._document_processor
+
+    @property
+    def embedding_manager(self):
+        """Lazy access to embedding manager"""
+        if self._embedding_manager is None:
+            raise RuntimeError("RetrievalService not initialized. Call _load_components() first.")
+        return self._embedding_manager
+
+    @property
+    def vector_store(self):
+        """Lazy access to vector store"""
+        if self._vector_store is None:
+            raise RuntimeError("RetrievalService not initialized. Call _load_components() first.")
+        return self._vector_store
+
+    @property
+    def dual_index_manager(self):
+        """Lazy access to dual index manager"""
+        if self._dual_index_manager is None:
+            raise RuntimeError("RetrievalService not initialized. Call _load_components() first.")
+        return self._dual_index_manager
+
+    @property
+    def llm_client(self):
+        """Lazy access to LLM client"""
+        if self._llm_client is None:
+            raise RuntimeError("RetrievalService not initialized. Call _load_components() first.")
+        return self._llm_client
+
+    @property
+    def namespace_manager(self):
+        """Lazy access to namespace manager"""
+        if self._namespace_manager is None:
+            raise RuntimeError("RetrievalService not initialized. Call _load_components() first.")
+        return self._namespace_manager
+
+    @property
+    def advanced_cache(self):
+        """Lazy access to advanced cache"""
+        if self._advanced_cache is None:
+            raise RuntimeError("RetrievalService not initialized. Call _load_components() first.")
+        return self._advanced_cache
 
     async def initialize(self) -> bool:
-        """Initialize all components"""
+        """Initialize all components - now just calls _load_components"""
         try:
-            if self._initialized:
-                return True
-
-            logger.info("Initializing retrieval service components...")
-
-            # Clear corrupted search cache to fix deserialization issues
-            self.advanced_cache.clear_search_cache()
-
-            # Initialize components concurrently
-            init_tasks = [
-                self.vector_store.initialize(),
-                self.dual_index_manager.initialize(),
-                self.embedding_manager.health_check(),
-                self.llm_client.health_check()
-            ]
-            results = await asyncio.gather(*init_tasks, return_exceptions=True)
-
-            # Check initialization results
-            vector_init, dual_index_init, embedding_health, llm_health = results
-
-            if isinstance(vector_init, Exception) or not vector_init:
-                logger.error(f"Failed to initialize vector store: {vector_init}")
-                return False
-            if isinstance(dual_index_init, Exception) or not dual_index_init:
-                logger.error(f"Failed to initialize dual index manager: {dual_index_init}")
-                return False
-            if isinstance(embedding_health, Exception) or (isinstance(embedding_health, dict) and embedding_health.get('status') != 'healthy'):
-                logger.error(f"Embedding service unhealthy: {embedding_health}")
-                return False
-            if isinstance(llm_health, Exception) or (isinstance(llm_health, dict) and llm_health.get('status') != 'healthy'):
-                logger.error(f"LLM service unhealthy: {llm_health}")
-                return False
-
-            self._initialized = True
-            logger.info("Retrieval service initialized successfully")
+            await self._load_components()
             return True
-
         except Exception as e:
             logger.error(f"Failed to initialize retrieval service: {str(e)}")
             return False
@@ -92,8 +177,9 @@ class RetrievalService:
         try:
             start_time = time.time()
 
+            # Load components if not already loaded
             if not self._initialized:
-                await self.initialize()
+                await self._load_components()
 
             logger.info(f"Processing document: {document_url}")
             logger.info(f"Answering {len(questions)} questions")
@@ -392,7 +478,7 @@ class RetrievalService:
         """Comprehensive health check for all services"""
         try:
             if not self._initialized:
-                await self.initialize()
+                await self._load_components() # Ensure components are loaded for health check
 
             # Check all components concurrently
             checks = await asyncio.gather(
@@ -453,6 +539,41 @@ class RetrievalService:
                         'chunk_size': settings.CHUNK_SIZE,
                         'retrieval_top_k': settings.RETRIEVAL_TOP_K
                     }
+                },
+                'error': str(e),
+                'timestamp': datetime.utcnow().isoformat()
+            }
+
+    async def lightweight_health_check(self) -> Dict[str, Any]:
+        """Lightweight health check that doesn't load heavy ML components"""
+        try:
+            return {
+                'status': 'healthy',
+                'components': {
+                    'api': 'healthy',
+                    'config': 'healthy',
+                    'ml_components': 'not_loaded'  # Indicates lazy loading is working
+                },
+                'service_info': {
+                    'initialized': self._initialized,
+                    'lazy_loading': True,
+                    'settings': {
+                        'embedding_model': settings.EMBEDDING_MODEL,
+                        'llm_model': settings.LLM_MODEL,
+                        'pinecone_index': settings.PINECONE_INDEX_NAME
+                    }
+                },
+                'error': None,
+                'timestamp': datetime.utcnow().isoformat()
+            }
+        except Exception as e:
+            logger.error(f"Lightweight health check failed: {str(e)}")
+            return {
+                'status': 'unhealthy',
+                'components': {},
+                'service_info': {
+                    'initialized': self._initialized,
+                    'lazy_loading': True
                 },
                 'error': str(e),
                 'timestamp': datetime.utcnow().isoformat()
