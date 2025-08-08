@@ -307,10 +307,29 @@ class RetrievalService:
                     for page in pdf_reader.pages:
                         text_content += page.extract_text()
             
-            # Process document using intelligent processor
+            # Detect domain and get configuration
+            from app.core.domain_detector import DomainDetector, DomainType
+            detector = DomainDetector()
+            
+            # Create temporary metadata for domain detection
+            temp_metadata = {
+                'title': document_url,
+                'document_text': text_content[:1000]  # Use first 1000 chars for detection
+            }
+            
+            # Detect domain
+            detected_domain = detector.detect_domain(text_content[:2000], temp_metadata)
+            domain_config = detector.get_domain_config(detected_domain)
+            
+            logger.info(f"Processing document with domain: {detected_domain.value}")
+            logger.info(f"Domain config: {domain_config}")
+            
+            # Process document using intelligent processor with domain-specific config
             document_result = await self.document_processor.process_document_intelligently(
                 text=text_content,
-                source=document_url
+                source=document_url,
+                chunk_size=domain_config.get('chunk_size', 800),
+                chunk_overlap=domain_config.get('chunk_overlap', 300)
             )
 
             if not document_result or not document_result.get('chunks'):
@@ -353,7 +372,20 @@ class RetrievalService:
 
             # Step 1: Detect domain and enhance query
             domain = self._detect_domain(document_metadata)
-            enhanced_query = question  # Enhancement could be added later if needed
+            
+            # Get domain-specific configuration
+            from app.core.domain_detector import DomainDetector, DomainType
+            detector = DomainDetector()
+            domain_enum = DomainType(domain)
+            domain_config = detector.get_domain_config(domain_enum)
+            
+            # Enhance query based on domain
+            enhanced_query = question
+            if domain_config.get('query_expansion', False):
+                # Use query expansion for primary domains
+                enhanced_query = await self._enhance_query_for_domain(question, domain)
+            
+            logger.info(f"Processing query for domain: {domain} (enhanced: {domain_config.get('query_expansion', False)})")
 
             # Step 2: Create query embedding
             query_embedding = await self.embedding_manager.embed_query(enhanced_query)
@@ -367,17 +399,21 @@ class RetrievalService:
                     'sources': []
                 }
 
-            # Step 3: Perform hybrid search
+            # Step 3: Perform hybrid search with domain-specific parameters
             search_filters = SearchFilter(
                 policy_type=document_metadata.get('policy_type'),
                 company_name=document_metadata.get('company_name'),
                 policy_uin=document_metadata.get('policy_uin')
             )
+            
+            # Use domain-specific top_k
+            top_k = domain_config.get('retrieval_top_k', settings.RETRIEVAL_TOP_K)
+            
             search_results = await self.dual_index_manager.hybrid_search(
                 query=enhanced_query,
                 namespace=namespace,
                 filters=search_filters,
-                top_k=settings.RETRIEVAL_TOP_K
+                top_k=top_k
             )
 
             if not search_results:
@@ -436,25 +472,64 @@ class RetrievalService:
     def _detect_domain(self, document_metadata: Dict[str, Any]) -> str:
         """Detect document domain for query enhancement"""
         try:
-            policy_type = document_metadata.get('policy_type', '')
-            company_name = document_metadata.get('company_name', '')
+            # Import domain detector
+            from app.core.domain_detector import DomainDetector, DomainType
             
-            # Handle None values safely
-            if policy_type and isinstance(policy_type, str):
-                policy_type = policy_type.lower()
-            if company_name and isinstance(company_name, str):
-                company_name = company_name.lower()
-
-            # Insurance-specific domain detection
-            if policy_type:
-                return policy_type  # e.g., 'health insurance', 'motor insurance'
-            if company_name and 'insurance' in company_name:
-                return 'insurance'
-            return 'general'
+            # Create domain detector instance
+            detector = DomainDetector()
+            
+            # Get document text for analysis
+            document_text = document_metadata.get('document_text', '')
+            if not document_text:
+                # Fallback to metadata-based detection
+                title = document_metadata.get('title', '')
+                policy_type = document_metadata.get('policy_type', '')
+                company_name = document_metadata.get('company_name', '')
+                document_text = f"{title} {policy_type} {company_name}"
+            
+            # Detect domain
+            detected_domain = detector.detect_domain(document_text, document_metadata)
+            
+            # Log domain detection
+            logger.info(f"Detected domain: {detected_domain.value}")
+            
+            return detected_domain.value
+            
         except Exception as e:
             logger.warning(f"Domain detection failed: {e}, using 'general'")
             return 'general'
-
+    
+    async def _enhance_query_for_domain(self, question: str, domain: str) -> str:
+        """Enhance query based on domain-specific patterns"""
+        try:
+            # Domain-specific query enhancement
+            if domain == 'insurance':
+                # Add insurance-specific terms
+                insurance_terms = ['policy', 'coverage', 'terms', 'conditions']
+                enhanced = f"{question} (policy coverage terms conditions)"
+            elif domain == 'legal':
+                # Add legal-specific terms
+                legal_terms = ['contract', 'agreement', 'clause', 'obligation']
+                enhanced = f"{question} (contract agreement clause)"
+            elif domain == 'hr':
+                # Add HR-specific terms
+                hr_terms = ['employee', 'benefits', 'policy', 'handbook']
+                enhanced = f"{question} (employee benefits policy)"
+            elif domain == 'compliance':
+                # Add compliance-specific terms
+                compliance_terms = ['regulation', 'compliance', 'requirement', 'standard']
+                enhanced = f"{question} (regulation compliance requirement)"
+            else:
+                # For other domains, return original question
+                enhanced = question
+            
+            logger.info(f"Enhanced query for {domain}: {enhanced}")
+            return enhanced
+            
+        except Exception as e:
+            logger.warning(f"Query enhancement failed: {e}")
+            return question
+    
     async def _get_service_statistics(self) -> Dict[str, Any]:
         """Get comprehensive service statistics"""
         try:
