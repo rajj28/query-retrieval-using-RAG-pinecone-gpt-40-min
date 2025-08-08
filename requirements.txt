@@ -30,6 +30,7 @@ scipy==1.11.4
 scikit-learn==1.4.2
 sentence-transformers==2.7.0
 huggingface-hub==0.19.4
+pandas==2.1.4
 
 # Security and authentication
 python-jose[cryptography]==3.3.0
