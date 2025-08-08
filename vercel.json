@@ -29,6 +29,7 @@
     "main.py": {
       "maxDuration": 60
     }
-  }
+  },
+  "regions": ["iad1"]
 }
 

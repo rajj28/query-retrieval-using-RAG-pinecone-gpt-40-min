@@ -101,6 +101,17 @@ async def health_check():
             'error': str(e)
         }
 
+@app.get("/api/v1/hackrx/health")
+async def hackrx_health_check():
+    """Simple health check endpoint specifically for Vercel's /api/v1/hackrx/health route"""
+    return {
+        "status": "healthy",
+        "service": settings.PROJECT_NAME,
+        "version": settings.VERSION,
+        "environment": settings.ENVIRONMENT,
+        "timestamp": datetime.utcnow().isoformat()
+    }
+
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request, exc):
     """Custom HTTP exception handler"""
