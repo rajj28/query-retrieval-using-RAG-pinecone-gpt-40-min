@@ -109,34 +109,50 @@ async def hackrx_health_check():
         "timestamp": datetime.utcnow().isoformat()
     }
 
-# Lazy load and include routers only when needed
-def get_hackrx_router():
-    """Lazy load the hackrx router"""
+# Main endpoint - directly in main.py to avoid router import issues
+@app.post("/api/v1/hackrx/hackrx/run")
+async def run_hackrx(
+    request: dict,
+    service = Depends(get_retrieval_service)
+):
+    """Main endpoint for processing documents and answering questions"""
     try:
-        from app.api.v1.routes.hackrx import router as hackrx_router
-        return hackrx_router
-    except ImportError as e:
-        logger.warning(f"Could not import hackrx router: {e}")
-        return None
-
-# Include routers only if they can be imported
-try:
-    hackrx_router = get_hackrx_router()
-    if hackrx_router:
-        app.include_router(hackrx_router, prefix=f"{settings.API_V1_STR}/hackrx", tags=["hackrx"])
-        logger.info("HackRX router included successfully")
-    else:
-        logger.warning("HackRX router not available - heavy dependencies not loaded")
-except Exception as e:
-    logger.warning(f"Could not include hackrx router: {e}")
-
-# Force include the router for now to ensure it's available
-try:
-    from app.api.v1.routes.hackrx import router as hackrx_router
-    app.include_router(hackrx_router, prefix=f"{settings.API_V1_STR}/hackrx", tags=["hackrx"])
-    logger.info("HackRX router force-included successfully")
-except Exception as e:
-    logger.error(f"Failed to include hackrx router: {e}")
+        # Validate request
+        if not request.get("documents") or not request.get("questions"):
+            raise HTTPException(status_code=422, detail="Missing required fields: documents and questions")
+        
+        documents = request["documents"]
+        questions = request["questions"]
+        
+        # Handle both string and list formats for documents
+        if isinstance(documents, list) and len(documents) > 0:
+            document_url = documents[0]  # Take first document
+        else:
+            document_url = documents
+            
+        # Process the request using lazy-loaded service
+        result = await service.process_documents_and_queries(
+            document_url=document_url,
+            questions=questions,
+            skip_processing=request.get("skip_processing", False)
+        )
+        
+        # Extract just the answer strings for simplified response
+        answer_strings = []
+        for answer in result.get('answers', []):
+            if isinstance(answer, dict):
+                if 'answer' in answer:
+                    answer_strings.append(str(answer['answer']))
+                else:
+                    answer_strings.append(str(answer))
+            else:
+                answer_strings.append(str(answer))
+        
+        return {"answers": answer_strings}
+        
+    except Exception as e:
+        logger.error(f"Main endpoint failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request, exc):
