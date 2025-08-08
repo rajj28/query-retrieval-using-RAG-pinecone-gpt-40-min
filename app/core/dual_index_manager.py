@@ -1050,9 +1050,13 @@ class DualIndexManager:
                 # Handle different possible dictionary structures
                 if 'text' in result_dict and 'metadata' in result_dict:
                     result = SearchResult(
+                        chunk_id=result_dict.get('chunk_id', ''),
                         text=result_dict['text'],
                         metadata=result_dict['metadata'],
-                        score=result_dict.get('score', 0.0)
+                        semantic_score=result_dict.get('semantic_score', 0.0),
+                        metadata_score=result_dict.get('metadata_score', 0.0),
+                        combined_score=result_dict.get('combined_score', 0.0),
+                        rank_position=result_dict.get('rank_position', 0)
                     )
                     results.append(result)
             except Exception as e:

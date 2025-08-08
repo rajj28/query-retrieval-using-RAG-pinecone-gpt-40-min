@@ -10,7 +10,7 @@ from datetime import datetime
 from app.api.v1.models.request import HackRXRequest, DocumentInfoRequest
 from app.api.v1.models.response import (
     HackRXResponse, DocumentInfoResponse, ServiceStatsResponse,
-    CleanupResponse, HealthCheckResponse
+    CleanupResponse, HealthCheckResponse, SimpleHackRXResponse
 )
 from app.services.retrieval_service import RetrievalService
 from app.config.settings import settings
@@ -100,7 +100,7 @@ async def detailed_health_check(
 
 @router.post(
     "/hackrx/run",
-    response_model=HackRXResponse,
+    response_model=SimpleHackRXResponse,
     summary="Process documents and answer questions",
     description="Process multiple insurance documents and answer questions using hybrid search and LLM"
 )
@@ -110,7 +110,7 @@ async def run_hackrx(
     http_request: Request,
     service: RetrievalService = Depends(get_retrieval_service),
     token: str = Depends(verify_token)
-) -> HackRXResponse:
+) -> SimpleHackRXResponse:
     """
     Process multiple documents and answer questions
 
@@ -186,13 +186,59 @@ async def run_hackrx(
                 detail=f"All queries failed: {aggregated_stats['error_details']}"
             )
 
-        # Prepare response
-        response = HackRXResponse(
-            answers=aggregated_answers,
-            processing_stats=aggregated_stats,
-            document_metadata=aggregated_metadata,
-            service_stats=await service._get_service_statistics(),
-            request_id=request_id
+        # Extract just the answer strings
+        answer_strings = []
+        for i, answer in enumerate(aggregated_answers):
+            logger.info(f"Processing answer {i}: {type(answer)} - {answer}")
+            
+            if isinstance(answer, dict):
+                # Handle different dictionary structures
+                if 'answer' in answer:
+                    answer_strings.append(str(answer['answer']))
+                elif 'coverage' in answer:
+                    answer_strings.append(str(answer['coverage']))
+                elif 'NCD' in answer:
+                    # Handle nested NCD structure
+                    ncd_value = answer['NCD']
+                    if isinstance(ncd_value, dict) and 'description' in ncd_value:
+                        answer_strings.append(str(ncd_value['description']))
+                    else:
+                        answer_strings.append(str(ncd_value))
+                elif 'benefit' in answer:
+                    answer_strings.append(str(answer['benefit']))
+                elif 'room_rent_limit' in answer:
+                    answer_strings.append(str(answer['room_rent_limit']))
+                else:
+                    # For any other dictionary structure, try to extract meaningful text
+                    # Look for any string values in the dictionary
+                    text_parts = []
+                    for key, value in answer.items():
+                        if isinstance(value, str):
+                            text_parts.append(value)
+                        elif isinstance(value, dict):
+                            # Recursively extract strings from nested dicts
+                            for sub_key, sub_value in value.items():
+                                if isinstance(sub_value, str):
+                                    text_parts.append(sub_value)
+                    
+                    if text_parts:
+                        answer_strings.append(" ".join(text_parts))
+                    else:
+                        # Fallback: convert entire dict to string
+                        answer_strings.append(str(answer))
+            elif isinstance(answer, str):
+                answer_strings.append(answer)
+            else:
+                # For any other type, convert to string
+                answer_strings.append(str(answer))
+        
+        logger.info(f"Extracted {len(answer_strings)} answer strings")
+        for i, ans in enumerate(answer_strings):
+            logger.info(f"Answer {i}: {ans[:100]}...")
+
+        # Prepare simplified response
+        response = SimpleHackRXResponse(
+            answers=answer_strings
         )
 
         logger.info(f"[{request_id}] Successfully processed in {processing_time:.2f}s")
@@ -234,6 +280,29 @@ async def run_hackrx(
                 "timestamp": datetime.utcnow().isoformat()
             }
         )
+
+@router.post(
+    "/test-simple",
+    response_model=SimpleHackRXResponse,
+    summary="Test simplified response format",
+    description="Test endpoint that returns simplified response format without processing"
+)
+async def test_simple_response() -> SimpleHackRXResponse:
+    """Test endpoint for simplified response format"""
+    return SimpleHackRXResponse(
+        answers=[
+            "A grace period of thirty days is provided for premium payment after the due date to renew or continue the policy without losing continuity benefits.",
+            "There is a waiting period of thirty-six (36) months of continuous coverage from the first policy inception for pre-existing diseases and their direct complications to be covered.",
+            "Yes, the policy covers maternity expenses, including childbirth and lawful medical termination of pregnancy. To be eligible, the female insured person must have been continuously covered for at least 24 months. The benefit is limited to two deliveries or terminations during the policy period.",
+            "The policy has a specific waiting period of two (2) years for cataract surgery.",
+            "Yes, the policy indemnifies the medical expenses for the organ donor's hospitalization for the purpose of harvesting the organ, provided the organ is for an insured person and the donation complies with the Transplantation of Human Organs Act, 1994.",
+            "A No Claim Discount of 5% on the base premium is offered on renewal for a one-year policy term if no claims were made in the preceding year. The maximum aggregate NCD is capped at 5% of the total base premium.",
+            "Yes, the policy reimburses expenses for health check-ups at the end of every block of two continuous policy years, provided the policy has been renewed without a break. The amount is subject to the limits specified in the Table of Benefits.",
+            "A hospital is defined as an institution with at least 10 inpatient beds (in towns with a population below ten lakhs) or 15 beds (in all other places), with qualified nursing staff and medical practitioners available 24/7, a fully equipped operation theatre, and which maintains daily records of patients.",
+            "The policy covers medical expenses for inpatient treatment under Ayurveda, Yoga, Naturopathy, Unani, Siddha, and Homeopathy systems up to the Sum Insured limit, provided the treatment is taken in an AYUSH Hospital.",
+            "Yes, for Plan A, the daily room rent is capped at 1% of the Sum Insured, and ICU charges are capped at 2% of the Sum Insured. These limits do not apply if the treatment is for a listed procedure in a Preferred Provider Network (PPN)."
+        ]
+    )
 
 @router.post(
     "/document/info",

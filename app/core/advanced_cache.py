@@ -203,6 +203,17 @@ class AdvancedCache:
         context_str = "|".join(context_items)
         return self._generate_key(context_str)
     
+    def clear_search_cache(self):
+        """Clear all search result caches"""
+        try:
+            import shutil
+            if self.search_cache_dir.exists():
+                shutil.rmtree(self.search_cache_dir)
+                self.search_cache_dir.mkdir(exist_ok=True)
+            logger.info("Search result cache cleared")
+        except Exception as e:
+            logger.error(f"Failed to clear search cache: {e}")
+
     def clear_expired(self):
         """Clear all expired entries"""
         current_time = time.time()

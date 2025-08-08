@@ -9,6 +9,7 @@ from app.core.embedding_manager import EmbeddingManager
 from app.core.vector_store import VectorStore
 from app.core.dual_index_manager import DualIndexManager, SearchFilter
 from app.core.context_aware_llm import ContextAwareLLMClient
+from app.core.advanced_cache import AdvancedCache
 from app.utils.namespace_manager import NamespaceManager, document_tracker
 from app.config.settings import settings
 
@@ -24,6 +25,7 @@ class RetrievalService:
         self.dual_index_manager = DualIndexManager()
         self.llm_client = ContextAwareLLMClient()
         self.namespace_manager = NamespaceManager()
+        self.advanced_cache = AdvancedCache()
         self._initialized = False
 
     async def initialize(self) -> bool:
@@ -33,6 +35,9 @@ class RetrievalService:
                 return True
 
             logger.info("Initializing retrieval service components...")
+
+            # Clear corrupted search cache to fix deserialization issues
+            self.advanced_cache.clear_search_cache()
 
             # Initialize components concurrently
             init_tasks = [
